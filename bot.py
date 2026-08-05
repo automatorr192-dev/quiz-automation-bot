@@ -43,6 +43,18 @@ WELCOME = (
     "Погнали?"
 )
 
+# Видно в пустом чате ещё до нажатия «Начать» — единственный шанс объяснить, зачем бот.
+DESCRIPTION = (
+    "Покажу, что в твоём бизнесе стоит автоматизировать первым.\n\n"
+    "7 коротких вопросов — примерно 2 минуты. В ответ получишь персональную карту "
+    "автоматизаций: где утекает время, что имеет смысл отдать роботам и с чего начать, "
+    "чтобы результат был виден сразу.\n\n"
+    "Нажми «Начать»."
+)
+SHORT_DESCRIPTION = (
+    "7 вопросов за 2 минуты — и персональная карта: что в твоём бизнесе автоматизировать первым."
+)
+
 
 class Quiz(StatesGroup):
     active = State()
@@ -232,6 +244,8 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     await bot.set_my_commands([BotCommand(command="start", description="Пройти квиз заново")])
+    await bot.set_my_description(description=DESCRIPTION)
+    await bot.set_my_short_description(short_description=SHORT_DESCRIPTION)
     try:
         # drop_pending_updates: после простоя Telegram отдаёт всё накопленное, и бот
         # начинает отвечать на вчерашние нажатия. Заодно снимает чужой вебхук — иначе 409.
