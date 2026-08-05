@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN useradd --create-home app && chown -R app /app
+RUN useradd --create-home app && mkdir -p /data && chown -R app /app /data
 USER app
 
 CMD ["python", "bot.py"]

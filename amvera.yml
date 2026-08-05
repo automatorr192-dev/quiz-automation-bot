@@ -5,4 +5,7 @@ meta:
     version: 3.11
 
 run:
+  # Состояние квиза и суточные лимиты живут в файлах: без persistenceMount они исчезают
+  # при каждом передеплое, и лимит обходится обычным ожиданием сборки.
+  persistenceMount: /data
   cmd: python bot.py
