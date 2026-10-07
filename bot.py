@@ -29,6 +29,7 @@ import automation_map
 import crm
 import export
 import funnel
+import quiz
 import quota
 from quiz import QUIZ
 from storage import FileStorage
@@ -201,6 +202,9 @@ async def on_answer(cb: CallbackQuery, state: FSMContext):
         return
 
     step = data["step"]
+    if step >= len(QUIZ):
+        await restart_hint(cb)
+        return
     options = QUIZ[step]["options"]
     choice = cb.data.split(":", 1)[1]
     # callback_data приходит от клиента, а не из нашей клавиатуры: подделать её можно.
@@ -313,6 +317,35 @@ async def leads_file(message: Message, command: CommandObject):
         BufferedInputFile(data, filename=f"quiz-leads-{days}d.xlsx"),
         caption=f"Лиды квиза за {days} дней: {len(rows)}",
     )
+
+
+@dp.message(Command("quiz"))
+async def quiz_file(message: Message):
+    if not is_admin(message):
+        return
+    await message.answer_document(
+        BufferedInputFile(quiz.dump(), filename="quiz.json"),
+        caption=(
+            "Вопросы квиза. Поправь текст, варианты или порядок и пришли файл обратно в этот "
+            "чат — проверю и применю сразу. У каждого вопроса нужны key, q и options."
+        ),
+    )
+
+
+@dp.message(F.document.file_name.endswith(".json"))
+async def quiz_upload(message: Message):
+    if not is_admin(message):
+        return
+    if (message.document.file_size or 0) > 100_000:
+        await message.answer("Файл великоват для квиза — до 100 КБ.")
+        return
+    buffer = await message.bot.download(message.document.file_id)
+    try:
+        updated = quiz.replace(buffer.read())
+    except quiz.BadQuiz as e:
+        await message.answer(f"Не применил: {e}. Текущие вопросы остались как были.")
+        return
+    await message.answer(f"Готово: в квизе {len(updated)} вопросов. Новые проходят уже по ним.")
 
 
 def _share(part: int, whole: int) -> str:
