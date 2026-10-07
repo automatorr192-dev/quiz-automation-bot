@@ -26,7 +26,9 @@ create table if not exists leads (
     source text,
     answers text not null,
     at real not null,
-    sent integer not null default 0
+    sent integer not null default 0,
+    sheet integer not null default 0,
+    channel text not null default 'tg'
 );
 create index if not exists ix_leads_user on leads(user_id);
 create table if not exists sessions (
@@ -35,9 +37,17 @@ create table if not exists sessions (
     step integer not null,
     source text,
     at real not null,
-    reminded integer not null default 0
+    reminded integer not null default 0,
+    channel text not null default 'tg'
 );
 """
+
+
+ADDED = (
+    ("leads", "sheet", "integer not null default 0"),
+    ("leads", "channel", "text not null default 'tg'"),
+    ("sessions", "channel", "text not null default 'tg'"),
+)
 
 
 def _connect() -> sqlite3.Connection:
@@ -45,6 +55,10 @@ def _connect() -> sqlite3.Connection:
     connection = sqlite3.connect(PATH)
     connection.row_factory = sqlite3.Row
     connection.executescript(SCHEMA)
+    for table, column, kind in ADDED:
+        names = {row[1] for row in connection.execute(f"pragma table_info({table})")}
+        if column not in names:
+            connection.execute(f"alter table {table} add column {column} {kind}")
     return connection
 
 
@@ -56,14 +70,17 @@ def track(user_id: int, kind: str, source: str | None = None, step: int | None =
         )
 
 
-def progress(user_id: int, chat_id: int, step: int, source: str | None) -> None:
+def progress(
+    user_id: int, chat_id: int, step: int, source: str | None, channel: str = "tg"
+) -> None:
     with closing(_connect()) as db, db:
         db.execute(
-            "insert into sessions (user_id, chat_id, step, source, at, reminded)"
-            " values (?, ?, ?, ?, ?, 0)"
+            "insert into sessions (user_id, chat_id, step, source, at, reminded, channel)"
+            " values (?, ?, ?, ?, ?, 0, ?)"
             " on conflict(user_id) do update set chat_id = excluded.chat_id,"
-            " step = excluded.step, source = excluded.source, at = excluded.at, reminded = 0",
-            (user_id, chat_id, step, source, time.time()),
+            " step = excluded.step, source = excluded.source, at = excluded.at, reminded = 0,"
+            " channel = excluded.channel",
+            (user_id, chat_id, step, source, time.time(), channel),
         )
 
 
@@ -86,11 +103,11 @@ def reminded(user_id: int) -> None:
         db.execute("update sessions set reminded = 1 where user_id = ?", (user_id,))
 
 
-def save_lead(user, answers: dict, source: str | None) -> int:
+def save_lead(user, answers: dict, source: str | None, channel: str = "tg") -> int:
     with closing(_connect()) as db, db:
         cursor = db.execute(
-            "insert into leads (user_id, username, name, source, answers, at)"
-            " values (?, ?, ?, ?, ?, ?)",
+            "insert into leads (user_id, username, name, source, answers, at, channel)"
+            " values (?, ?, ?, ?, ?, ?, ?)",
             (
                 user.id,
                 user.username,
@@ -98,6 +115,7 @@ def save_lead(user, answers: dict, source: str | None) -> int:
                 source,
                 json.dumps(answers, ensure_ascii=False),
                 time.time(),
+                channel,
             ),
         )
         return cursor.lastrowid
@@ -114,19 +132,29 @@ def set_phone(user_id: int, phone: str) -> dict | None:
     return {**dict(row), "phone": phone, "answers": json.loads(row["answers"])}
 
 
-def unsent(older_than: int, now: float | None = None) -> list[dict]:
+TARGETS = ("sent", "sheet")
+
+
+def unsent(
+    older_than: int, now: float | None = None, targets: tuple[str, ...] = ("sent",)
+) -> list[dict]:
     moment = (now or time.time()) - older_than
+    waiting = " or ".join(f"{target} = 0" for target in targets if target in TARGETS)
+    if not waiting:
+        return []
     with closing(_connect()) as db:
         rows = db.execute(
-            "select * from leads where sent = 0 and (phone is not null or at < ?) limit 50",
+            f"select * from leads where ({waiting}) and (phone is not null or at < ?) limit 50",
             (moment,),
         ).fetchall()
     return [{**dict(row), "answers": json.loads(row["answers"])} for row in rows]
 
 
-def mark_sent(lead_id: int) -> None:
+def mark_sent(lead_id: int, target: str = "sent") -> None:
+    if target not in TARGETS:
+        raise ValueError(target)
     with closing(_connect()) as db, db:
-        db.execute("update leads set sent = 1 where id = ?", (lead_id,))
+        db.execute(f"update leads set {target} = 1 where id = ?", (lead_id,))
 
 
 def leads(days: int = 30) -> list[dict]:

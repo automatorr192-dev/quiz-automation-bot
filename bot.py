@@ -31,6 +31,7 @@ import export
 import funnel
 import quiz
 import quota
+import sheets
 from quiz import QUIZ
 from storage import FileStorage
 
@@ -45,21 +46,8 @@ REMIND_AFTER = int(os.environ.get("REMIND_AFTER_MINUTES") or 60) * 60
 CRM_WAIT = int(os.environ.get("CRM_WAIT_MINUTES") or 10) * 60
 FOLLOW_UP_EVERY = 300
 SKIP_PHONE = "Не сейчас"
-PHONE_ASK = (
-    "Хочешь, разберём карту голосом за 15 минут и прикинем, сколько стоит первый шаг? "
-    "Оставь телефон — позвоню в удобное время.\n\n"
-    "<i>Нажимая «Оставить телефон», ты соглашаешься, что номер используется только для "
-    "этой связи.</i>"
-)
 
 dp = Dispatcher(storage=FileStorage())
-
-WELCOME = (
-    "👋 Привет! Покажу, <b>что в твоём бизнесе стоит автоматизировать первым</b>.\n\n"
-    "7 коротких вопросов (~2 минуты) — и получишь <b>персональную карту автоматизаций</b>: "
-    "где утекает время, что автоматизировать и с чего начать.\n\n"
-    "Погнали?"
-)
 
 # Видно в пустом чате ещё до нажатия «Начать» — единственный шанс объяснить, зачем бот.
 DESCRIPTION = (
@@ -151,7 +139,7 @@ async def show_question(message: Message, state: FSMContext, step: int):
 async def start(message: Message, command: CommandObject, state: FSMContext):
     await state.set_data({"answers": {}, "source": command.args or "—"})
     funnel.track(message.from_user.id, "open", command.args or "—")
-    await message.answer(WELCOME, reply_markup=start_keyboard())
+    await message.answer(quiz.TEXTS["welcome"], reply_markup=start_keyboard())
 
 
 @dp.callback_query(F.data == "begin")
@@ -259,14 +247,10 @@ async def finish(cb: CallbackQuery, message: Message, state: FSMContext):
         await state.clear()
         return
     await message.answer(text, parse_mode=None)
-    await message.answer(
-        "Понравилось? Такую автоматизацию я могу <b>внедрить под ключ</b> за тебя — "
-        "напиши мне, разберём твой случай 👇",
-        reply_markup=finish_keyboard(),
-    )
+    await message.answer(quiz.TEXTS["finish"], reply_markup=finish_keyboard())
     await notify_lead(message.bot, cb.from_user, answers, source)
     await state.clear()
-    await message.answer(PHONE_ASK, reply_markup=phone_keyboard())
+    await message.answer(quiz.TEXTS["phone"], reply_markup=phone_keyboard())
 
 
 @dp.message(F.contact)
@@ -277,9 +261,7 @@ async def on_contact(message: Message):
         )
         return
     lead = funnel.set_phone(message.from_user.id, message.contact.phone_number)
-    await message.answer(
-        "Записал, спасибо! Позвоню в ближайший рабочий день.", reply_markup=ReplyKeyboardRemove()
-    )
+    await message.answer(quiz.TEXTS["thanks"], reply_markup=ReplyKeyboardRemove())
     if lead is None:
         return
     with suppress(TelegramAPIError):
@@ -326,8 +308,8 @@ async def quiz_file(message: Message):
     await message.answer_document(
         BufferedInputFile(quiz.dump(), filename="quiz.json"),
         caption=(
-            "Вопросы квиза. Поправь текст, варианты или порядок и пришли файл обратно в этот "
-            "чат — проверю и применю сразу. У каждого вопроса нужны key, q и options."
+            "Вопросы и тексты квиза. Поправь формулировки, варианты, порядок или тексты "
+            "приветствия и финала и пришли файл обратно в этот чат — проверю и применю сразу."
         ),
     )
 
@@ -345,7 +327,9 @@ async def quiz_upload(message: Message):
     except quiz.BadQuiz as e:
         await message.answer(f"Не применил: {e}. Текущие вопросы остались как были.")
         return
-    await message.answer(f"Готово: в квизе {len(updated)} вопросов. Новые проходят уже по ним.")
+    await message.answer(
+        f"Готово: в квизе {len(updated)} вопросов, тексты обновлены. Новые проходят уже по ним."
+    )
 
 
 def _share(part: int, whole: int) -> str:
@@ -364,11 +348,17 @@ def stats_text(data: dict) -> str:
     return "\n".join(lines)
 
 
+def targets() -> tuple[str, ...]:
+    return tuple(
+        target for target, on in (("sent", crm.enabled()), ("sheet", sheets.enabled())) if on
+    )
+
+
 async def push(lead: dict) -> None:
-    if not crm.enabled():
-        return
-    if await crm.send(lead) is not None:
-        funnel.mark_sent(lead["id"])
+    if crm.enabled() and not lead.get("sent") and await crm.send(lead) is not None:
+        funnel.mark_sent(lead["id"], "sent")
+    if sheets.enabled() and not lead.get("sheet") and await sheets.send(lead):
+        funnel.mark_sent(lead["id"], "sheet")
 
 
 async def follow_up(bot: Bot) -> None:
@@ -385,8 +375,8 @@ async def follow_up(bot: Bot) -> None:
                         reply_markup=resume_keyboard(),
                     )
                 funnel.reminded(session["user_id"])
-            if crm.enabled():
-                for lead in funnel.unsent(CRM_WAIT):
+            if targets():
+                for lead in funnel.unsent(CRM_WAIT, targets=targets()):
                     await push(lead)
         except Exception:
             logging.exception("follow_up упал")

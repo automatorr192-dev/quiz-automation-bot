@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 DATA_DIR = os.environ.get("DATA_DIR") or ("/data" if os.path.isdir("/data") else "data")
 PATH = os.path.join(DATA_DIR, "quiz.json")
@@ -9,6 +10,29 @@ MAX_OPTIONS = 8
 
 class BadQuiz(Exception):
     pass
+
+
+DEFAULT_TEXTS = {
+    "welcome": (
+        "👋 Привет! Покажу, <b>что в твоём бизнесе стоит автоматизировать первым</b>.\n\n"
+        "7 коротких вопросов (~2 минуты) — и получишь <b>персональную карту автоматизаций</b>: "
+        "где утекает время, что автоматизировать и с чего начать.\n\n"
+        "Погнали?"
+    ),
+    "finish": (
+        "Понравилось? Такую автоматизацию я могу <b>внедрить под ключ</b> за тебя — "
+        "напиши мне, разберём твой случай 👇"
+    ),
+    "phone": (
+        "Хочешь, разберём карту голосом за 15 минут и прикинем, сколько стоит первый шаг? "
+        "Оставь телефон — позвоню в удобное время.\n\n"
+        "<i>Нажимая «Оставить телефон», ты соглашаешься, что номер используется только для "
+        "этой связи.</i>"
+    ),
+    "thanks": "Записал, спасибо! Позвоню в ближайший рабочий день.",
+}
+TAGS = {"b", "i", "u", "s", "a", "code", "pre", "blockquote", "tg-spoiler"}
+TAG = re.compile(r"<(/?)([a-z-]+)(?:\s[^<>]*)?>")
 
 
 DEFAULT = [
@@ -126,15 +150,57 @@ def validate(data) -> list[dict]:
     return clean
 
 
-def _stored() -> list[dict]:
+def html_ok(text: str) -> bool:
+    stack = []
+    for closing, name in TAG.findall(text):
+        if name not in TAGS:
+            return False
+        if closing:
+            if not stack or stack.pop() != name:
+                return False
+        else:
+            stack.append(name)
+    return not stack and text.count("<") == len(TAG.findall(text))
+
+
+def validate_texts(data) -> dict:
+    if not isinstance(data, dict):
+        raise BadQuiz("texts — объект с текстами бота")
+    clean = dict(DEFAULT_TEXTS)
+    for key, value in data.items():
+        if key not in DEFAULT_TEXTS:
+            raise BadQuiz(f"неизвестный текст «{key}», есть: {', '.join(DEFAULT_TEXTS)}")
+        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 1500:
+            raise BadQuiz(f"текст «{key}» от 1 до 1500 знаков")
+        if not html_ok(value):
+            raise BadQuiz(
+                f"в тексте «{key}» сломана разметка: теги b, i, u, s, a, code должны "
+                "закрываться, а знак < писать как &lt;"
+            )
+        clean[key] = value.strip()
+    return clean
+
+
+def parse(data) -> tuple[list[dict], dict]:
+    if isinstance(data, list):
+        return validate(data), dict(TEXTS)
+    if isinstance(data, dict) and "questions" in data:
+        return validate(data["questions"]), validate_texts(data.get("texts") or {})
+    raise BadQuiz('ожидается {"questions": [...], "texts": {...}} или список вопросов')
+
+
+def _stored() -> tuple[list[dict], dict]:
     try:
         with open(PATH, encoding="utf-8") as file:
-            return validate(json.load(file))
-    except (OSError, ValueError, BadQuiz):
-        return [dict(item) for item in DEFAULT]
+            data = json.load(file)
+        if isinstance(data, list):
+            return validate(data), dict(DEFAULT_TEXTS)
+        return validate(data["questions"]), validate_texts(data.get("texts") or {})
+    except (OSError, ValueError, KeyError, TypeError, BadQuiz):
+        return [dict(item) for item in DEFAULT], dict(DEFAULT_TEXTS)
 
 
-QUIZ = _stored()
+QUIZ, TEXTS = _stored()
 
 
 def replace(raw: bytes) -> list[dict]:
@@ -142,15 +208,17 @@ def replace(raw: bytes) -> list[dict]:
         data = json.loads(raw.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as e:
         raise BadQuiz("файл не читается как JSON") from e
-    clean = validate(data)
+    questions, texts = parse(data)
     os.makedirs(DATA_DIR, exist_ok=True)
     tmp = PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as file:
-        json.dump(clean, file, ensure_ascii=False, indent=2)
+        json.dump({"questions": questions, "texts": texts}, file, ensure_ascii=False, indent=2)
     os.replace(tmp, PATH)
-    QUIZ[:] = clean
-    return clean
+    QUIZ[:] = questions
+    TEXTS.clear()
+    TEXTS.update(texts)
+    return questions
 
 
 def dump() -> bytes:
-    return json.dumps(QUIZ, ensure_ascii=False, indent=2).encode()
+    return json.dumps({"questions": QUIZ, "texts": TEXTS}, ensure_ascii=False, indent=2).encode()

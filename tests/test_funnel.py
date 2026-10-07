@@ -169,3 +169,56 @@ async def test_someone_elses_contact_is_refused():
     )
     await bot.on_contact(message)
     assert funnel.leads()[0]["phone"] is None
+
+
+async def test_lead_row_goes_to_google_sheets(monkeypatch):
+    import sheets
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, text="ok")
+
+    monkeypatch.setattr(sheets, "URL", "https://script.google.com/macros/s/x/exec")
+    monkeypatch.setattr(sheets, "TOKEN", "t")
+    monkeypatch.setattr(sheets, "TRANSPORT", httpx.MockTransport(handler))
+
+    funnel.save_lead(person(21), ANSWERS, "reels")
+    lead = funnel.set_phone(21, "+79991112233")
+    assert await sheets.send(lead)
+    body = json.loads(calls[0].content)
+    assert body["token"] == "t"
+    row = body["row"]
+    assert list(row)[:6] == ["Дата", "Канал", "Имя", "Ник", "Телефон", "Источник"]
+    assert row["Телефон"] == "+79991112233" and row["Канал"] == "Telegram"
+    assert row[QUIZ[0]["q"]] == ANSWERS[QUIZ[0]["key"]]
+
+
+async def test_crm_and_sheets_are_tracked_separately(monkeypatch):
+    import bot
+    import sheets
+
+    async def crm_down(lead):
+        return None
+
+    async def sheet_up(lead):
+        return True
+
+    monkeypatch.setattr(crm, "URL", "https://crm")
+    monkeypatch.setattr(crm, "SECRET", "s")
+    monkeypatch.setattr(crm, "send", crm_down)
+    monkeypatch.setattr(sheets, "URL", "https://sheet")
+    monkeypatch.setattr(sheets, "send", sheet_up)
+
+    funnel.save_lead(person(22), ANSWERS, "—")
+    lead = funnel.set_phone(22, "+7999")
+    await bot.push(lead)
+    [pending] = funnel.unsent(600, targets=bot.targets())
+    assert pending["sent"] == 0 and pending["sheet"] == 1
+    assert funnel.unsent(600, targets=("sheet",)) == []
+
+
+def test_unknown_target_is_rejected():
+    with pytest.raises(ValueError):
+        funnel.mark_sent(1, "phone; drop table leads")
