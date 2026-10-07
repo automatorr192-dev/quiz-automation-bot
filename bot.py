@@ -29,6 +29,7 @@ import automation_map
 import crm
 import export
 import funnel
+import max_bot
 import quiz
 import quota
 import sheets
@@ -361,12 +362,18 @@ async def push(lead: dict) -> None:
         funnel.mark_sent(lead["id"], "sheet")
 
 
-async def follow_up(bot: Bot) -> None:
+async def follow_up(bot: Bot, max_quiz: max_bot.QuizBot | None = None) -> None:
     while True:
         await asyncio.sleep(FOLLOW_UP_EVERY)
         try:
             for session in funnel.stalled(REMIND_AFTER):
                 left = len(QUIZ) - session["step"]
+                if session.get("channel") == "max":
+                    if max_quiz is not None:
+                        with suppress(Exception):
+                            await max_quiz.remind(session)
+                    funnel.reminded(session["user_id"])
+                    continue
                 with suppress(TelegramAPIError):
                     await bot.send_message(
                         session["chat_id"],
@@ -421,13 +428,29 @@ async def main():
     await bot.set_my_commands([BotCommand(command="start", description="Пройти квиз заново")])
     await bot.set_my_description(description=DESCRIPTION)
     await bot.set_my_short_description(short_description=SHORT_DESCRIPTION)
-    task = asyncio.create_task(follow_up(bot))
+    tasks = []
+    max_client = max_bot.client() if max_bot.enabled() else None
+    max_quiz = None
+    if max_client is not None:
+        max_quiz = max_bot.QuizBot(
+            max_bot.Max(max_client),
+            max_bot.States(),
+            lambda person, answers, source: notify_lead(bot, person, answers, source),
+            push,
+            DAILY_LIMIT,
+            CONTACT_URL,
+        )
+        tasks.append(asyncio.create_task(max_bot.run(max_quiz)))
+    tasks.append(asyncio.create_task(follow_up(bot, max_quiz)))
     try:
         # drop_pending_updates: после простоя Telegram отдаёт всё накопленное, и бот
         # начинает отвечать на вчерашние нажатия. Заодно снимает чужой вебхук — иначе 409.
         await dp.start_polling(bot, drop_pending_updates=True)
     finally:
-        task.cancel()
+        for task in tasks:
+            task.cancel()
+        if max_client is not None:
+            await max_client.aclose()
         await bot.session.close()
 
 
