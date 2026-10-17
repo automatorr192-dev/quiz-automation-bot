@@ -208,7 +208,7 @@ class QuizBot:
         except Exception:
             logging.exception("MAX: build_map failed")
             text = "Не получилось собрать карту — ИИ временно недоступен. Попробуй чуть позже."
-        await self.api.send(chat_id, text, html=False)
+        await self.api.send(chat_id, automation_map.with_demo(text, answers), html=False)
         await self.api.send(chat_id, quiz.TEXTS["finish"], again)
         await self.notify(person, answers, source)
         await self.api.send(

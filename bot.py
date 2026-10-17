@@ -30,6 +30,7 @@ import crm
 import export
 import funnel
 import max_bot
+import observability
 import quiz
 import quota
 import sheets
@@ -37,7 +38,7 @@ from quiz import QUIZ
 from storage import FileStorage
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
+observability.setup()
 
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
 CONTACT_URL = "https://t.me/aiarchitectorrr"
@@ -247,7 +248,7 @@ async def finish(cb: CallbackQuery, message: Message, state: FSMContext):
         await notify_lead(message.bot, cb.from_user, answers, source)
         await state.clear()
         return
-    await message.answer(text, parse_mode=None)
+    await message.answer(automation_map.with_demo(text, answers), parse_mode=None)
     await message.answer(quiz.TEXTS["finish"], reply_markup=finish_keyboard())
     await notify_lead(message.bot, cb.from_user, answers, source)
     await state.clear()
