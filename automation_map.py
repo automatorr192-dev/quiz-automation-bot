@@ -13,7 +13,7 @@ MODELS = [
     m.strip()
     for m in os.environ.get(
         "MODELS",
-        "deepseek/deepseek-v4-flash,openai/gpt-oss-120b",
+        "nvidia/nemotron-3-super-120b-a12b:free,nvidia/nemotron-3-ultra-550b-a55b:free,deepseek/deepseek-v4-flash",
     ).split(",")
     if m.strip()
 ]
@@ -104,7 +104,7 @@ async def build_map(answers: dict) -> str:
         try:
             resp = await client.chat.completions.create(
                 model=model,
-                max_tokens=1200,
+                max_tokens=4000,
                 timeout=90,
                 messages=[
                     {"role": "system", "content": SYSTEM},

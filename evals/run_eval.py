@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE.parent))
 import automation_map  # noqa: E402
 
 RUNS = HERE / "runs"
-JUDGE_MODEL = "deepseek/deepseek-v4-flash"
+JUDGE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 HEADERS = ("🔍", "⚙️", "🚀")
 MONEY = re.compile(r"(доход|выручк|прибыл)[^.\n]{0,40}\d|\d[\d\s]*(₽|руб)", re.IGNORECASE)
 CTA = re.compile(
@@ -60,7 +60,7 @@ async def judge(answers: dict, text: str) -> dict:
     client = automation_map._get_client()
     response = await client.chat.completions.create(
         model=JUDGE_MODEL,
-        max_tokens=1000,
+        max_tokens=4000,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": JUDGE},
