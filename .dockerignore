@@ -11,3 +11,4 @@ evals/runs
 data
 *.db
 *.md
+worker/

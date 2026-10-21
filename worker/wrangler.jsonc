@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "quiz-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "quiz-bot",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Карта собирается дольше, чем Telegram ждёт ответа на вебхук: вебхук отвечает сразу,
+  // а запрос к модели и отправка карты идут шагами Workflow.
+  "workflows": [{ "name": "quiz-map", "binding": "MAP", "class_name": "MapWorkflow" }],
+  // Напоминания бросившим квиз, догоняющая отправка лидов в CRM, установка вебхука.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  // Задаются через `wrangler secret put`. Пустые CRM_* и SHEETS_* выключают выгрузку.
+  "secrets": {
+    "required": [
+      "TELEGRAM_BOT_TOKEN",
+      "WEBHOOK_SECRET",
+      "OPENROUTER_API_KEY",
+      "ADMIN_CHAT_ID",
+      "CRM_WEBHOOK_URL",
+      "CRM_WEBHOOK_SECRET",
+      "SHEETS_WEBHOOK_URL",
+      "SHEETS_TOKEN"
+    ]
+  },
+  "vars": {
+    "PUBLIC_URL": "",
+    "CONTACT_URL": "https://t.me/aiarchitectorrr",
+    "DAILY_LIMIT": "3",
+    "REMIND_AFTER_MINUTES": "60",
+    "CRM_WAIT_MINUTES": "10",
+    "MODELS": "nvidia/nemotron-3-super-120b-a12b:free,nvidia/nemotron-3-ultra-550b-a55b:free,deepseek/deepseek-v4-flash"
+  }
+}

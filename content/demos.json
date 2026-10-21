@@ -1,0 +1,28 @@
+{
+  "demos": {
+    "Переписка и ответы клиентам": [
+      "CRM, где ИИ сам разбирает заявку и пишет черновик ответа",
+      "https://automatorr192-dev.github.io/ai-crm/demo/"
+    ],
+    "Запись и напоминания": [
+      "запись в студию с напоминаниями — мини-приложение в Telegram",
+      "https://automatorr192-dev.github.io/glyanets/"
+    ],
+    "Заявки и работа с лидами": [
+      "воронка, где каждая заявка уже размечена ИИ",
+      "https://automatorr192-dev.github.io/ai-crm/demo/"
+    ],
+    "Счета и документы": [
+      "бот, который разбирает договор и выносит данные в таблицу",
+      "https://github.com/automatorr192-dev/document-helper"
+    ],
+    "Отчёты и сбор данных": [
+      "отчёт, который собирается сам: конверсия, реклама, деньги в работе",
+      "https://automatorr192-dev.github.io/ai-crm/demo/report-days-30.html"
+    ]
+  },
+  "fallback": [
+    "все мои проекты",
+    "https://automatorr192-dev.github.io/"
+  ]
+}

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 from contextlib import suppress
@@ -52,16 +53,12 @@ SKIP_PHONE = "Не сейчас"
 dp = Dispatcher(storage=FileStorage())
 
 # Видно в пустом чате ещё до нажатия «Начать» — единственный шанс объяснить, зачем бот.
-DESCRIPTION = (
-    "Покажу, что в твоём бизнесе стоит автоматизировать первым.\n\n"
-    "7 коротких вопросов — примерно 2 минуты. В ответ получишь персональную карту "
-    "автоматизаций: где утекает время, что имеет смысл отдать роботам и с чего начать, "
-    "чтобы результат был виден сразу.\n\n"
-    "Нажми «Начать»."
-)
-SHORT_DESCRIPTION = (
-    "7 вопросов за 2 минуты — и персональная карта: что в твоём бизнесе автоматизировать первым."
-)
+# Тексты общие с версией на Cloudflare, лежат в content/.
+with open(
+    os.path.join(os.path.dirname(__file__), "content", "profile.json"), encoding="utf-8"
+) as _file:
+    _profile = json.load(_file)
+DESCRIPTION, SHORT_DESCRIPTION = _profile["description"], _profile["short_description"]
 
 
 class Quiz(StatesGroup):
