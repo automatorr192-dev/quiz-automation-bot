@@ -8,7 +8,7 @@
     {
       "binding": "DB",
       "database_name": "quiz-bot",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "701a0752-f86e-48a3-ada4-e6b0d0d85fe9",
       "migrations_dir": "migrations"
     }
   ],
@@ -31,7 +31,7 @@
     ]
   },
   "vars": {
-    "PUBLIC_URL": "",
+    "PUBLIC_URL": "https://quiz-bot.automatorr192.workers.dev",
     "CONTACT_URL": "https://t.me/aiarchitectorrr",
     "DAILY_LIMIT": "3",
     "REMIND_AFTER_MINUTES": "60",
